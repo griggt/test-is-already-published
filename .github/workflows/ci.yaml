@@ -1,0 +1,66 @@
+name: Dotty
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  publish_nightly:
+    runs-on: [self-hosted, Linux]
+    container:
+      image: lampepfl/dotty:2021-03-22
+    env:
+      NIGHTLYBUILD: yes
+
+    steps:
+      - name: Git Checkout
+        uses: actions/checkout@v2
+
+      - name: Get version string for this build
+        run: |
+          ver=$(./project/scripts/sbt "print scala3-compiler-bootstrapped/version" | tail -n1)
+          echo "This build version: $ver"
+          echo "THISBUILD_VERSION=$ver" >> $GITHUB_ENV
+
+      - name: Check whether not yet published
+        id: not_yet_published
+        continue-on-error: true
+        run: |
+          ! ./project/scripts/is-version-published.sh "$THISBUILD_VERSION"
+
+      - name: Publish Nightly
+        if: "steps.not_yet_published.outcome == 'success'"
+        run: echo "Publishing!"
+
+  nightly_documentation:
+    runs-on: [self-hosted, Linux]
+    container:
+      image: lampepfl/dotty:2021-03-22
+    needs: [publish_nightly]
+    env:
+      NIGHTLYBUILD: yes
+
+    steps:
+      - name: "Creating website"
+        run: echo "Building the documentation site."
+
+  open_issue_on_failure:
+    runs-on: [self-hosted, Linux]
+    container:
+      image: lampepfl/dotty:2021-03-22
+    needs: [nightly_documentation]
+    # The `failure()` expression is true iff at least one of the dependencies
+    # of this job (including transitive dependencies) has failed.
+    if: "failure() && github.event_name == 'push'"
+    steps:
+      - name: Checkout issue template
+        uses: actions/checkout@v2
+
+      - name: Open an issue
+        uses: JasonEtco/create-an-issue@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WORKFLOW_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        with:
+          filename: .github/workflows/issue_nightly_failed.md
