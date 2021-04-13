@@ -31,7 +31,7 @@ jobs:
 
       - name: Publish Nightly
         if: "steps.not_yet_published.outcome == 'success'"
-        run: echo "Publishing!"
+        run: echo "Publishing!" ; false
 
   nightly_documentation:
     runs-on: [self-hosted, Linux]
